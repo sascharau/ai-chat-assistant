@@ -1,8 +1,10 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
 
 class LlmConfig(BaseSettings):
     provider: str = "anthropic"
@@ -43,6 +45,5 @@ class Config(BaseSettings):
 
 def load_config() -> Config:
     """Load config from env vars and .env."""
-    from dotenv import load_dotenv
     load_dotenv()  # load .env, but do NOT override
     return Config()
