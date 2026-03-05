@@ -9,3 +9,4 @@
 /coverage
 /deployment/02-postgres-secret.yaml
 /deployment/04-configmap.yaml
+.idea

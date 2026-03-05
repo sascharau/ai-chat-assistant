@@ -26,7 +26,7 @@ logger = structlog.get_logger()
 async def run():
     # 1. load config
     config = load_config()
-    logger.info("Konfiguration geladen", assistant=config.assistant_name)
+    logger.info("Configuration loaded", assistant=config.assistant_name)
 
     # 2. Initialize database
     db = Database(config.resolve_db_path())
