@@ -5,8 +5,6 @@
 - Security: --cap-drop ALL, non-root, read-only rootfs
 - Extract output via markers
 """
-from __future__ import annotations
-
 import json
 import logging
 import subprocess

@@ -57,11 +57,18 @@ class TelegramChannel(Channel):
         telegram_id = int(chat_id.removeprefix("telegram:"))
         # Telegram: max 4096 characters per message
         for chunk in _split_text(text, max_len=4096):
-            await self._app.bot.send_message(
-                chat_id=telegram_id,
-                text=chunk,
-                parse_mode="Markdown",
-            )
+            try:
+                await self._app.bot.send_message(
+                    chat_id=telegram_id,
+                    text=chunk,
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                # Fallback to plain text if Markdown parsing fails
+                await self._app.bot.send_message(
+                    chat_id=telegram_id,
+                    text=chunk,
+                )
 
     def owns_chat_id(self, chat_id: str) -> bool:
         return chat_id.startswith("telegram:")

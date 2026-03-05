@@ -21,7 +21,8 @@ import structlog
 from core.agent.engine import process_message
 from core.channels import create_channels, IncomingMessage
 from core.config import load_config
-from core.db import Database
+from core.container_runner import run_container_agent, ContainerInput
+from core.db import Database, Message
 from core.scheduler import start_scheduler
 from core.tools import create_tools
 
@@ -52,6 +53,29 @@ async def run():
     tools = create_tools(config)
     logger.info("Tools registered", count=len(tools), names=[t.name for t in tools])
 
+    # 4b. Build container helper
+    async def run_agent(chat_id: str, prompt: str) -> str:
+        """Run agent either in Docker container or directly."""
+        if config.sandbox_mode == "docker":
+            group_folder = str(config.data_dir / "groups" / chat_id.replace(":", "_").replace("/", "_").replace("..", ""))
+            container_input = ContainerInput(
+                prompt=prompt,
+                chat_id=chat_id,
+                group_folder=group_folder,
+                is_main=True,
+            )
+            secrets = {}
+            if config.anthropic_api_key:
+                secrets["ANTHROPIC_API_KEY"] = config.anthropic_api_key
+            output = await asyncio.to_thread(
+                run_container_agent, container_input, secrets, config.data_dir,
+            )
+            if output.status == "error":
+                logger.error("Container agent error", error=output.result, chat_id=chat_id)
+            return output.result
+        else:
+            return await process_message(chat_id, prompt, db, config, tools)
+
     # 5. Message handler
     async def handle_message(msg: IncomingMessage):
         """Process an incoming message."""
@@ -59,15 +83,13 @@ async def run():
         db.ensure_chat(msg.chat_id, msg.channel, is_group=msg.is_group)
 
         # Save message
-        db.save_message(
-            __import__("aiboy.db", fromlist=["Message"]).Message(
-                chat_id=msg.chat_id,
-                sender=msg.sender_name,
-                content=msg.content,
-                is_from_bot=False,
-                timestamp=msg.timestamp.isoformat(),
-            )
-        )
+        db.save_message(Message(
+            chat_id=msg.chat_id,
+            sender=msg.sender_name,
+            content=msg.content,
+            is_from_bot=False,
+            timestamp=msg.timestamp.isoformat(),
+        ))
 
         # Trigger check: in groups only respond to @mention
         trigger = f"@{config.assistant_name.lower()}"
@@ -83,7 +105,7 @@ async def run():
 
         # Run agent
         try:
-            reply = await process_message(msg.chat_id, msg.content, db, config, tools)
+            reply = await run_agent(msg.chat_id, msg.content)
         except Exception:
             logger.exception("Agent error")
             reply = "Sorry, an error occurred."
@@ -94,14 +116,12 @@ async def run():
             await channel.send_message(msg.chat_id, reply)
 
         # Save reply to DB
-        db.save_message(
-            __import__("aiboy.db", fromlist=["Message"]).Message(
-                chat_id=msg.chat_id,
-                sender=config.assistant_name,
-                content=reply,
-                is_from_bot=True,
-            )
-        )
+        db.save_message(Message(
+            chat_id=msg.chat_id,
+            sender=config.assistant_name,
+            content=reply,
+            is_from_bot=True,
+        ))
 
     # 6. Connect channels
     for channel in channels:
@@ -110,7 +130,7 @@ async def run():
 
     # 7. Start scheduler (in background)
     async def process_task(task: dict) -> str:
-        reply = await process_message(task["chat_id"], task["prompt"], db, config, tools)
+        reply = await run_agent(task["chat_id"], task["prompt"])
         # Send result to chat
         channel = next((ch for ch in channels if ch.owns_chat_id(task["chat_id"])), None)
         if channel:

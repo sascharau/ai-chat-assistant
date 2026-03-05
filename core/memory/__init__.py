@@ -3,8 +3,6 @@
 - Simple file-based persistence
 - Vector search can be added later
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 
