@@ -1,0 +1,11 @@
+
+*.sqlite3
+*.db
+*__pycache__*
+*htmlcov*
+.coverage
+.env
+.venv/*
+/coverage
+/deployment/02-postgres-secret.yaml
+/deployment/04-configmap.yaml

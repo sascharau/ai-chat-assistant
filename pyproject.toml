@@ -1,0 +1,37 @@
+[project]
+name = "AI-chat-assistant"
+version = "0.1.0"
+description = "'privat' ai assistant"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.52",
+    "python-telegram-bot>=22",
+    "aiosqlite>=0.21",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "httpx>=0.28",
+    "croniter>=6.0",
+    "python-dotenv>=1.1",
+    "structlog>=25.1",
+    "pydantic-settings>=2.13.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.11",               # Linter + Formatter
+]
+
+[project.scripts]
+fin3000 = "core.__main__:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
