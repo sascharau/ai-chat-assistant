@@ -10,16 +10,19 @@ Procedure:
 6. Start scheduler
 7. Run continuously
 """
-import sys
 import asyncio
 import logging
+import signal
+import sys
 from pathlib import Path
 
 import structlog
 
+from core.agent.engine import process_message
+from core.channels import create_channels, IncomingMessage
 from core.config import load_config
 from core.db import Database
-from core.channels import create_channels
+from core.scheduler import start_scheduler
 from core.tools import create_tools
 
 logger = structlog.get_logger()
@@ -45,9 +48,102 @@ async def run():
         sys.exit(1)
     logger.info("Registered channels", channels=[c.name for c in channels])
 
-    # 4. Tools registrieren
+    # 4. Register tools
     tools = create_tools(config)
-    logger.info("Tools registriert", count=len(tools), names=[t.name for t in tools])
+    logger.info("Tools registered", count=len(tools), names=[t.name for t in tools])
+
+    # 5. Message handler
+    async def handle_message(msg: IncomingMessage):
+        """Process an incoming message."""
+        # Create chat in DB (if new)
+        db.ensure_chat(msg.chat_id, msg.channel, is_group=msg.is_group)
+
+        # Save message
+        db.save_message(
+            __import__("aiboy.db", fromlist=["Message"]).Message(
+                chat_id=msg.chat_id,
+                sender=msg.sender_name,
+                content=msg.content,
+                is_from_bot=False,
+                timestamp=msg.timestamp.isoformat(),
+            )
+        )
+
+        # Trigger check: in groups only respond to @mention
+        trigger = f"@{config.assistant_name.lower()}"
+        if msg.is_group and not msg.content.lower().startswith(trigger):
+            return
+
+        logger.info(
+            "Message received",
+            chat_id=msg.chat_id,
+            sender=msg.sender_name,
+            channel=msg.channel,
+        )
+
+        # Run agent
+        try:
+            reply = await process_message(msg.chat_id, msg.content, db, config, tools)
+        except Exception:
+            logger.exception("Agent error")
+            reply = "Sorry, an error occurred."
+
+        # Send reply
+        channel = next((ch for ch in channels if ch.owns_chat_id(msg.chat_id)), None)
+        if channel:
+            await channel.send_message(msg.chat_id, reply)
+
+        # Save reply to DB
+        db.save_message(
+            __import__("aiboy.db", fromlist=["Message"]).Message(
+                chat_id=msg.chat_id,
+                sender=config.assistant_name,
+                content=reply,
+                is_from_bot=True,
+            )
+        )
+
+    # 6. Connect channels
+    for channel in channels:
+        await channel.connect(handle_message)
+        logger.info("Channel connected", channel=channel.name)
+
+    # 7. Start scheduler (in background)
+    async def process_task(task: dict) -> str:
+        reply = await process_message(task["chat_id"], task["prompt"], db, config, tools)
+        # Send result to chat
+        channel = next((ch for ch in channels if ch.owns_chat_id(task["chat_id"])), None)
+        if channel:
+            await channel.send_message(task["chat_id"], reply)
+        return reply
+
+    scheduler_task = asyncio.create_task(start_scheduler(db, process_task))
+
+    logger.info(
+        f"{config.assistant_name} running",
+        channels=[ch.name for ch in channels],
+        tools=[t.name for t in tools],
+    )
+
+    # 8. Wait for shutdown
+    stop_event = asyncio.Event()
+
+    def _signal_handler():
+        logger.info("Shutdown signal received")
+        stop_event.set()
+
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
+
+    await stop_event.wait()
+
+    # Cleanup
+    logger.info("Shutting down...")
+    scheduler_task.cancel()
+    for channel in channels:
+        await channel.shutdown()
+    db.close()
 
 
 def main():

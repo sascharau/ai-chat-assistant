@@ -10,7 +10,7 @@ import importlib
 import pkgutil
 from typing import Callable
 
-from core.channels.base import Channel
+from core.channels.base import Channel, IncomingMessage
 from core.config import Config
 
 # Type for factory functions
