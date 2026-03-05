@@ -6,13 +6,11 @@ Channels register themselves via register_channel().
 Channels whose credentials are missing are skipped (return None).
 
 """
-from __future__ import annotations
-
 import importlib
 import pkgutil
 from typing import Callable
 
-from core.channels.base import Channel, MessageHandler
+from core.channels.base import Channel
 from core.config import Config
 
 # Type for factory functions

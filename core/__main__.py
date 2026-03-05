@@ -10,6 +10,7 @@ Procedure:
 6. Start scheduler
 7. Run continuously
 """
+import sys
 import asyncio
 import logging
 from pathlib import Path
@@ -19,6 +20,7 @@ import structlog
 from core.config import load_config
 from core.db import Database
 from core.channels import create_channels
+from core.tools import create_tools
 
 logger = structlog.get_logger()
 
@@ -35,12 +37,17 @@ async def run():
         db.run_migrations(migrations_dir)
     logger.info("Database ready", path=str(config.resolve_db_path()))
 
-    # 3. Create channels (auto-discovery)
+    # 3. Create channels
     channels = create_channels(config)
     if not channels:
         logger.error("No channels configured! At least one channel is required.")
         logger.error("Set TELEGRAM_BOT_TOKEN in the .env file, for example.")
         sys.exit(1)
+    logger.info("Registered channels", channels=[c.name for c in channels])
+
+    # 4. Tools registrieren
+    tools = create_tools(config)
+    logger.info("Tools registriert", count=len(tools), names=[t.name for t in tools])
 
 
 def main():

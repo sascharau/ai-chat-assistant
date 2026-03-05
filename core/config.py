@@ -29,7 +29,7 @@ class Config(BaseSettings):
     timezone: str = "Europe/Berlin"
     data_dir: Path = BASE_DIR.expanduser()
 
-    # Secrets come ONLY from env vars, never from config files!
+    # get envs
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
 
